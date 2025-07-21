@@ -7,7 +7,7 @@ import { parse } from 'csv-parse/sync';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Convert current UTC time to JST (UTC+9)
+// Convert current UTC time to JST and build JMA image URL
 function getJmaImageUrl() {
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000); // JST
   const YYYY = now.getFullYear();
@@ -22,45 +22,67 @@ function getJmaImageUrl() {
 
 app.get('/stations-color', async (req, res) => {
   try {
-    const imageUrl = getJmaImageUrl();
-    console.log('Fetching image from:', imageUrl);
-
-    // Load and parse CSV
+    // Load and parse the CSV
     const csvData = fs.readFileSync('./stations.csv', 'utf-8');
     const records = parse(csvData, {
       columns: true,
       skip_empty_lines: true
     });
 
-    // Fetch image
+    // Get real-time JMA image URL
+    const imageUrl = getJmaImageUrl();
+    console.log(`Fetching image: ${imageUrl}`);
+
+    // Download and decode the image
     const response = await fetch(imageUrl);
-    if (!response.ok) throw new Error(`Image not found: ${imageUrl}`);
+    if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
     const buffer = await response.buffer();
     const image = sharp(buffer);
     const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
 
-    // Extract color for each station
+    const width = info.width;
+    const height = info.height;
+
+    // Process each station
     const result = records.map(row => {
-      const x = parseInt(row['K']); // pixel X
-      const y = parseInt(row['L']); // pixel Y
-      const idx = (y * info.width + x) * 3;
+      const name = row['E'];
+      const lat = parseFloat(row['J']);
+      const lon = parseFloat(row['I']);
+      const x = parseInt(row['K']);
+      const y = parseInt(row['L']);
+
+      if (
+        isNaN(lat) || isNaN(lon) ||
+        isNaN(x) || isNaN(y) ||
+        x < 0 || x >= width ||
+        y < 0 || y >= height
+      ) {
+        console.warn(`Skipping station "${name}" — invalid data (x=${x}, y=${y}, lat=${lat}, lon=${lon})`);
+        return null;
+      }
+
+      const idx = (y * width + x) * 3;
+      if (idx + 2 >= data.length) {
+        console.warn(`Skipping station "${name}" — pixel index out of bounds`);
+        return null;
+      }
 
       const r = data[idx];
       const g = data[idx + 1];
       const b = data[idx + 2];
 
       return {
-        name: row['E'],              // Station name
-        lat: parseFloat(row['J']),  // Latitude
-        lon: parseFloat(row['I']),  // Longitude
+        name,
+        lat,
+        lon,
         color: `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
       };
-    });
+    }).filter(Boolean); // Remove any null entries
 
     res.json(result);
 
   } catch (error) {
-    console.error(error);
+    console.error('Error:', error);
     res.status(500).send('Something went wrong: ' + error.message);
   }
 });
