@@ -35,35 +35,45 @@ app.get('/stations-color', async (req, res) => {
 
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-    const gifBuffer = await response.buffer();
+const gifBuffer = Buffer.from(await response.arrayBuffer());
 
-    // Convert GIF to PNG to avoid color palette issues
+// Convert GIF to full RGB, no alpha
 const pngBuffer = await sharp(gifBuffer)
-  .ensureAlpha()       // keep or remove depending on what you want
-  .removeAlpha()       // strip alpha channel for 3-byte pixels
-  .png()
+  .ensureAlpha() // in case GIF is indexed with transparency
+  .removeAlpha() // drop alpha to get RGB only (3 channels)
+  .png()         // force re-encoding to flat RGB
   .toBuffer();
+
+// Save for debugging
 await sharp(pngBuffer).toFile('/tmp/debug-output.png');
-app.get('/debug-image', (req, res) => {
-  res.sendFile('/tmp/debug-output.png');
-});
 
-
-
+// Get raw RGB bytes
 const { data, info } = await sharp(pngBuffer)
-  .ensureAlpha()           // Adds alpha channel if missing
-  .png()                   // Forces full decoding
   .raw()
   .toBuffer({ resolveWithObject: true });
 
-const colorSet = new Set();
-for (let i = 0; i < data.length; i += 3) {
-  const r = data[i];
-  const g = data[i + 1];
-  const b = data[i + 2];
-  colorSet.add(`${r},${g},${b}`);
+
+for (const row of records) {
+  const x = parseInt(row['K']);
+  const y = parseInt(row['L']);
+  const idx = (y * info.width + x) * 3;
+  if (x >= 0 && y >= 0 && x < info.width && y < info.height) {
+    marked.data[idx + 0] = 255; // R
+    marked.data[idx + 1] = 0;   // G
+    marked.data[idx + 2] = 0;   // B
+  }
 }
-console.log('Unique colors in image:', [...colorSet]);
+
+await sharp(marked.data, {
+  raw: {
+    width: info.width,
+    height: info.height,
+    channels: 3,
+  }
+}).png().toFile('/tmp/marked-stations.png');
+app.get('/marked-stations', (req, res) => {
+  res.sendFile('/tmp/marked-stations.png');
+});
 
 
 
