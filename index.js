@@ -7,9 +7,8 @@ import { parse } from 'csv-parse/sync';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Convert current UTC time to JST and build JMA image URL
 function getJmaImageUrl() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC +9, minus 2 seconds
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // JST
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const DD = String(now.getDate()).padStart(2, '0');
@@ -22,32 +21,24 @@ function getJmaImageUrl() {
 
 app.get('/stations-color', async (req, res) => {
   try {
-    // Load and parse CSV
     const csvData = fs.readFileSync('./stations.csv', 'utf-8');
     const records = parse(csvData, {
       skip_empty_lines: true,
       columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
     });
 
-    // Get latest image
     const imageUrl = getJmaImageUrl();
     console.log(`Fetching image: ${imageUrl}`);
-
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
     const gifBuffer = Buffer.from(await response.arrayBuffer());
 
-    // Convert GIF to PNG and strip alpha
+    // Decode and convert the image to RGB
     const pngBuffer = await sharp(gifBuffer)
-      .ensureAlpha()
       .removeAlpha()
       .png()
       .toBuffer();
 
-    // Save debug version
-    await sharp(pngBuffer).toFile('/tmp/debug-output.png');
-
-    // Read raw RGB data
     const { data, info } = await sharp(pngBuffer)
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -55,37 +46,40 @@ app.get('/stations-color', async (req, res) => {
     const width = info.width;
     const height = info.height;
 
-    // Create a copy of the buffer for editing
-    const stationOverlay = Buffer.alloc(data.length);
-    data.copy(stationOverlay);
-
-    // Draw red pixels for each station
+    // ✅ Generate station overlay
+    const overlay = Buffer.alloc(width * height * 4, 0); // RGBA transparent
     for (const row of records) {
       const x = parseInt(row['K']);
       const y = parseInt(row['L']);
       if (
-        isNaN(x) || isNaN(y) ||
-        x < 0 || y < 0 || x >= width || y >= height
-      ) continue;
-
-      const idx = (y * width + x) * 3;
-      if (idx + 2 < stationOverlay.length) {
-        stationOverlay[idx] = 255;     // R
-        stationOverlay[idx + 1] = 0;   // G
-        stationOverlay[idx + 2] = 0;   // B
+        !isNaN(x) && !isNaN(y) &&
+        x >= 0 && x < width &&
+        y >= 0 && y < height
+      ) {
+        const idx = (y * width + x) * 4;
+        overlay[idx] = 255;     // R
+        overlay[idx + 1] = 0;   // G
+        overlay[idx + 2] = 0;   // B
+        overlay[idx + 3] = 255; // A (fully opaque red pixel)
       }
     }
 
-    // Save the overlayed image
-    await sharp(stationOverlay, {
-      raw: {
-        width,
-        height,
-        channels: 3
-      }
-    }).png().toFile('/tmp/marked-stations.png');
+    const markedImage = await sharp(pngBuffer)
+      .composite([{ input: overlay, raw: { width, height, channels: 4 }, blend: 'over' }])
+      .png()
+      .toFile('/tmp/marked-stations.png');
 
-    // Extract station color info from original image
+    // ✨ Log unique colors in the base image
+    const colorSet = new Set();
+    for (let i = 0; i < data.length; i += 3) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      colorSet.add(`${r},${g},${b}`);
+    }
+    console.log('Unique colors in image:', [...colorSet]);
+
+    // Build station color data
     const result = records.map(row => {
       const name = row['E'];
       const lon = parseFloat(row['I']);
@@ -99,32 +93,34 @@ app.get('/stations-color', async (req, res) => {
         x < 0 || x >= width ||
         y < 0 || y >= height
       ) {
+        console.warn(`Skipping station "${name}" — invalid data`);
         return null;
       }
 
       const idx = (y * width + x) * 3;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-
       return {
         name,
         lat,
         lon,
         x,
         y,
-        color: { r, g, b }
+        color: {
+          r: data[idx],
+          g: data[idx + 1],
+          b: data[idx + 2]
+        }
       };
     }).filter(Boolean);
 
     res.json(result);
+
   } catch (error) {
     console.error('Error:', error);
     res.status(500).send('Something went wrong: ' + error.message);
   }
 });
 
-// Serve marked image
+// Serve debug image
 app.get('/marked-stations', (req, res) => {
   res.sendFile('/tmp/marked-stations.png');
 });
