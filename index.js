@@ -48,7 +48,9 @@ app.get('/debug-image', (req, res) => {
   res.sendFile('/tmp/debug-output.png');
 });
 
-const { data, info } = await sharp(pngBuffer)
+const { data, info } = await sharp(buffer)
+  .ensureAlpha()            // Add alpha if needed
+  .png()                    // Convert to full RGBA PNG
   .raw()
   .toBuffer({ resolveWithObject: true });
 const colorSet = new Set();
