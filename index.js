@@ -9,8 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 // Convert current UTC time to JST and build JMA image URL
 function getJmaImageUrl() {
-  // JST time, minus 2 seconds
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC +9, minus 2s
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC +9, minus 2 seconds
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const DD = String(now.getDate()).padStart(2, '0');
@@ -23,23 +22,24 @@ function getJmaImageUrl() {
 
 app.get('/stations-color', async (req, res) => {
   try {
-    // Load and parse the CSV
+    // Load and parse CSV
     const csvData = fs.readFileSync('./stations.csv', 'utf-8');
     const records = parse(csvData, {
       skip_empty_lines: true,
       columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
     });
 
-    // Get real-time JMA image URL
+    // Get latest image URL
     const imageUrl = getJmaImageUrl();
     console.log(`Fetching image: ${imageUrl}`);
 
-    // Download and decode the image
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-    const buffer = await response.buffer();
-    const image = sharp(buffer);
-    const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
+    const gifBuffer = await response.buffer();
+
+    // Convert GIF to PNG to avoid color palette issues
+    const pngBuffer = await sharp(gifBuffer).png().toBuffer();
+    const { data, info } = await sharp(pngBuffer).raw().toBuffer({ resolveWithObject: true });
 
     const width = info.width;
     const height = info.height;
@@ -62,7 +62,7 @@ app.get('/stations-color', async (req, res) => {
         return null;
       }
 
-      const idx = (y * width + x) * 3;
+      const idx = (y * width + x) * 3; // RGB only (no alpha)
       if (idx + 2 >= data.length) {
         console.warn(`Skipping station "${name}" — pixel index out of bounds`);
         return null;
@@ -80,7 +80,7 @@ app.get('/stations-color', async (req, res) => {
         y,
         color: { r, g, b }
       };
-    }).filter(Boolean); // Remove any null entries
+    }).filter(Boolean); // Remove invalid entries
 
     res.json(result);
 
@@ -89,7 +89,6 @@ app.get('/stations-color', async (req, res) => {
     res.status(500).send('Something went wrong: ' + error.message);
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
