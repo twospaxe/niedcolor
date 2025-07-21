@@ -38,8 +38,16 @@ app.get('/stations-color', async (req, res) => {
     const gifBuffer = await response.buffer();
 
     // Convert GIF to PNG to avoid color palette issues
-    const pngBuffer = await sharp(gifBuffer).png().toBuffer();
-    const { data, info } = await sharp(pngBuffer).raw().toBuffer({ resolveWithObject: true });
+    const pngBuffer = await sharp(gifBuffer)
+  .removeAlpha()
+  .toColourspace('rgb') // Force RGB
+  .png()
+  .toBuffer();
+
+const { data, info } = await sharp(pngBuffer)
+  .raw()
+  .toBuffer({ resolveWithObject: true });
+
 
     const width = info.width;
     const height = info.height;
