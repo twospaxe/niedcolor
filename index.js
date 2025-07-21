@@ -1,34 +1,11 @@
-import express from 'express';
-import fetch from 'node-fetch';
-import sharp from 'sharp';
-import fs from 'fs';
-import { parse } from 'csv-parse/sync';
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Convert current UTC time to JST and build JMA image URL
-function getJmaImageUrl() {
-  // JST time, minus 2 seconds
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC +9, minus 2s
-  const YYYY = now.getFullYear();
-  const MM = String(now.getMonth() + 1).padStart(2, '0');
-  const DD = String(now.getDate()).padStart(2, '0');
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  const timestamp = `${YYYY}${MM}${DD}${hh}${mm}${ss}`;
-  return `http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${YYYY}${MM}${DD}/${timestamp}.jma_s.gif`;
-}
-
 app.get('/stations-color', async (req, res) => {
   try {
     // Load and parse the CSV
     const csvData = fs.readFileSync('./stations.csv', 'utf-8');
-const records = parse(csvData, {
-  skip_empty_lines: true,
-  columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
-});
+    const records = parse(csvData, {
+      skip_empty_lines: true,
+      columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
+    });
 
     // Get real-time JMA image URL
     const imageUrl = getJmaImageUrl();
@@ -46,11 +23,11 @@ const records = parse(csvData, {
 
     // Process each station
     const result = records.map(row => {
- const name = row['E'];
-const lon = parseFloat(row['I']);
-const lat = parseFloat(row['J']);
-const x = parseInt(row['K']);
-const y = parseInt(row['L']);
+      const name = row['E'];
+      const lon = parseFloat(row['I']);
+      const lat = parseFloat(row['J']);
+      const x = parseInt(row['K']);
+      const y = parseInt(row['L']);
 
       if (
         isNaN(lat) || isNaN(lon) ||
@@ -76,7 +53,9 @@ const y = parseInt(row['L']);
         name,
         lat,
         lon,
-        color: `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+        x,
+        y,
+        color: { r, g, b }
       };
     }).filter(Boolean); // Remove any null entries
 
@@ -86,8 +65,4 @@ const y = parseInt(row['L']);
     console.error('Error:', error);
     res.status(500).send('Something went wrong: ' + error.message);
   }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
