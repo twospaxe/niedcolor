@@ -24,7 +24,7 @@ app.get('/stations-color', async (req, res) => {
     const csvData = fs.readFileSync('./stationeng.csv', 'utf-8');
     const records = parse(csvData, {
       skip_empty_lines: true,
-      columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
+      columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P']
     });
 
     const imageUrl = getJmaImageUrl();
