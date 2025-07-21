@@ -9,7 +9,8 @@ const PORT = process.env.PORT || 3000;
 
 // Convert current UTC time to JST and build JMA image URL
 function getJmaImageUrl() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000); // JST
+  // JST time, minus 2 seconds
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC +9, minus 2s
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const DD = String(now.getDate()).padStart(2, '0');
