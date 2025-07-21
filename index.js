@@ -47,6 +47,14 @@ const pngBuffer = await sharp(gifBuffer)
 const { data, info } = await sharp(pngBuffer)
   .raw()
   .toBuffer({ resolveWithObject: true });
+const colorSet = new Set();
+for (let i = 0; i < data.length; i += 3) {
+  const r = data[i];
+  const g = data[i + 1];
+  const b = data[i + 2];
+  colorSet.add(`${r},${g},${b}`);
+}
+console.log('Unique colors in image:', [...colorSet]);
 
 
 
