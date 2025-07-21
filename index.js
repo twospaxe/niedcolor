@@ -21,7 +21,7 @@ function getJmaImageUrl() {
 
 app.get('/stations-color', async (req, res) => {
   try {
-    const csvData = fs.readFileSync('./stations.csv', 'utf-8');
+    const csvData = fs.readFileSync('./stationeng.csv', 'utf-8');
     const records = parse(csvData, {
       skip_empty_lines: true,
       columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
@@ -49,8 +49,8 @@ app.get('/stations-color', async (req, res) => {
     // ✅ Generate station overlay
     const overlay = Buffer.alloc(width * height * 4, 0); // RGBA transparent
     for (const row of records) {
-      const x = parseInt(row['K']);
-      const y = parseInt(row['L']);
+      const x = parseInt(row['L']);
+      const y = parseInt(row['M']);
       if (
         !isNaN(x) && !isNaN(y) &&
         x >= 0 && x < width &&
@@ -81,11 +81,11 @@ app.get('/stations-color', async (req, res) => {
 
     // Build station color data
     const result = records.map(row => {
-      const name = row['E'];
-      const lon = parseFloat(row['I']);
-      const lat = parseFloat(row['J']);
-      const x = parseInt(row['K']);
-      const y = parseInt(row['L']);
+      const name = row['F'];
+      const lon = parseFloat(row['J']);
+      const lat = parseFloat(row['K']);
+      const x = parseInt(row['L']);
+      const y = parseInt(row['M']);
 
       if (
         isNaN(lat) || isNaN(lon) ||
