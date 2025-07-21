@@ -7,9 +7,9 @@ import { parse } from 'csv-parse/sync';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Convert current UTC time to JST and build JMA image URL
+// Convert UTC to JST and build image URL
 function getJmaImageUrl() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC +9, minus 2 seconds
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // UTC+9 minus ~2s
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const DD = String(now.getDate()).padStart(2, '0');
@@ -20,67 +20,50 @@ function getJmaImageUrl() {
   return `http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${YYYY}${MM}${DD}/${timestamp}.jma_s.gif`;
 }
 
-app.get('/stations-color', async (req, res) => {
-  try {
-    // Load and parse CSV
-    const csvData = fs.readFileSync('./stations.csv', 'utf-8');
-    const records = parse(csvData, {
-      skip_empty_lines: true,
-      columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
-    });
-
-    // Get latest image URL
-    const imageUrl = getJmaImageUrl();
-    console.log(`Fetching image: ${imageUrl}`);
-
-    const response = await fetch(imageUrl);
-    if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-const gifBuffer = Buffer.from(await response.arrayBuffer());
-
-// Convert GIF to full RGB, no alpha
-const pngBuffer = await sharp(gifBuffer)
-  .ensureAlpha() // in case GIF is indexed with transparency
-  .removeAlpha() // drop alpha to get RGB only (3 channels)
-  .png()         // force re-encoding to flat RGB
-  .toBuffer();
-
-// Save for debugging
-await sharp(pngBuffer).toFile('/tmp/debug-output.png');
-
-// Get raw RGB bytes
-const { data, info } = await sharp(pngBuffer)
-  .raw()
-  .toBuffer({ resolveWithObject: true });
-
-
-for (const row of records) {
-  const x = parseInt(row['K']);
-  const y = parseInt(row['L']);
-  const idx = (y * info.width + x) * 3;
-  if (x >= 0 && y >= 0 && x < info.width && y < info.height) {
-    marked.data[idx + 0] = 255; // R
-    marked.data[idx + 1] = 0;   // G
-    marked.data[idx + 2] = 0;   // B
-  }
-}
-
-await sharp(marked.data, {
-  raw: {
-    width: info.width,
-    height: info.height,
-    channels: 3,
-  }
-}).png().toFile('/tmp/marked-stations.png');
-app.get('/marked-stations', (req, res) => {
-  res.sendFile('/tmp/marked-stations.png');
+// Load and parse CSV once (assumes static station list)
+const csvData = fs.readFileSync('./stations.csv', 'utf-8');
+const records = parse(csvData, {
+  skip_empty_lines: true,
+  columns: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
 });
 
+app.get('/stations-color', async (req, res) => {
+  try {
+    const imageUrl = getJmaImageUrl();
+    console.log(`Fetching image: ${imageUrl}`);
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+    const gifBuffer = Buffer.from(await response.arrayBuffer());
 
+    // Convert GIF to flat PNG (RGB)
+    const pngBuffer = await sharp(gifBuffer)
+      .ensureAlpha()
+      .removeAlpha()
+      .png()
+      .toBuffer();
+
+    // Save debug PNG
+    await sharp(pngBuffer).toFile('/tmp/debug-output.png');
+
+    // Get raw RGB data
+    const { data, info } = await sharp(pngBuffer)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // Log all unique colors
+    const colorSet = new Set();
+    for (let i = 0; i < data.length; i += 3) {
+      colorSet.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    }
+    console.log('Unique colors in image:', [...colorSet]);
 
     const width = info.width;
     const height = info.height;
 
-    // Process each station
+    // Clone buffer to mark station pixels
+    const stationOverlay = Buffer.from(data);
+
+    // Process stations
     const result = records.map(row => {
       const name = row['E'];
       const lon = parseFloat(row['I']);
@@ -98,15 +81,16 @@ app.get('/marked-stations', (req, res) => {
         return null;
       }
 
-      const idx = (y * width + x) * 3; // RGB only (no alpha)
+      const idx = (y * width + x) * 3;
       if (idx + 2 >= data.length) {
         console.warn(`Skipping station "${name}" — pixel index out of bounds`);
         return null;
       }
 
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
+      // Overlay red dot
+      stationOverlay[idx + 0] = 255; // R
+      stationOverlay[idx + 1] = 0;   // G
+      stationOverlay[idx + 2] = 0;   // B
 
       return {
         name,
@@ -114,9 +98,22 @@ app.get('/marked-stations', (req, res) => {
         lon,
         x,
         y,
-        color: { r, g, b }
+        color: {
+          r: data[idx],
+          g: data[idx + 1],
+          b: data[idx + 2]
+        }
       };
-    }).filter(Boolean); // Remove invalid entries
+    }).filter(Boolean);
+
+    // Save marked image
+    await sharp(stationOverlay, {
+      raw: {
+        width,
+        height,
+        channels: 3
+      }
+    }).png().toFile('/tmp/marked-stations.png');
 
     res.json(result);
 
@@ -124,6 +121,16 @@ app.get('/marked-stations', (req, res) => {
     console.error('Error:', error);
     res.status(500).send('Something went wrong: ' + error.message);
   }
+});
+
+// Expose debug image
+app.get('/debug-image', (req, res) => {
+  res.sendFile('/tmp/debug-output.png');
+});
+
+// Expose overlay-marked image
+app.get('/marked-stations', (req, res) => {
+  res.sendFile('/tmp/marked-stations.png');
 });
 
 app.listen(PORT, () => {
