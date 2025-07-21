@@ -49,8 +49,9 @@ app.get('/stations-color', async (req, res) => {
     // ✅ Generate station overlay
     const overlay = Buffer.alloc(width * height * 4, 0); // RGBA transparent
     for (const row of records) {
-      const x = parseInt(row['L']);
-      const y = parseInt(row['M']);
+     const x = Math.round(parseFloat(row['L']) + parseFloat(row['N'] || 0));
+const y = Math.round(parseFloat(row['M']) + parseFloat(row['O'] || 0));
+
       if (
         !isNaN(x) && !isNaN(y) &&
         x >= 0 && x < width &&
