@@ -43,7 +43,7 @@ const pngBuffer = await sharp(gifBuffer)
   .removeAlpha()       // strip alpha channel for 3-byte pixels
   .png()
   .toBuffer();
-
+await sharp(pngBuffer).toFile('debug-output.png');
 const { data, info } = await sharp(pngBuffer)
   .raw()
   .toBuffer({ resolveWithObject: true });
