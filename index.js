@@ -48,11 +48,16 @@ app.get('/debug-image', (req, res) => {
   res.sendFile('/tmp/debug-output.png');
 });
 
+const response = await fetch(imageUrl);
+if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+const buffer = Buffer.from(await response.arrayBuffer());
+
 const { data, info } = await sharp(buffer)
-  .ensureAlpha()            // Add alpha if needed
-  .png()                    // Convert to full RGBA PNG
+  .ensureAlpha()           // Adds alpha channel if missing
+  .png()                   // Forces full decoding
   .raw()
   .toBuffer({ resolveWithObject: true });
+
 const colorSet = new Set();
 for (let i = 0; i < data.length; i += 3) {
   const r = data[i];
