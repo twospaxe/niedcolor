@@ -25,10 +25,10 @@ app.get('/stations-color', async (req, res) => {
   try {
     // Load and parse the CSV
     const csvData = fs.readFileSync('./stations.csv', 'utf-8');
-    const records = parse(csvData, {
-      columns: true,
-      skip_empty_lines: true
-    });
+const records = parse(csvData, {
+  skip_empty_lines: true,
+  columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
+});
 
     // Get real-time JMA image URL
     const imageUrl = getJmaImageUrl();
