@@ -46,11 +46,11 @@ app.get('/stations-color', async (req, res) => {
 
     // Process each station
     const result = records.map(row => {
-      const name = row['E'];
-      const lat = parseFloat(row['J']);
-      const lon = parseFloat(row['I']);
-      const x = parseInt(row['K']);
-      const y = parseInt(row['L']);
+ const name = row['E'];
+const lon = parseFloat(row['I']);
+const lat = parseFloat(row['J']);
+const x = parseInt(row['K']);
+const y = parseInt(row['L']);
 
       if (
         isNaN(lat) || isNaN(lon) ||
