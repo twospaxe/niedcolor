@@ -48,11 +48,9 @@ app.get('/debug-image', (req, res) => {
   res.sendFile('/tmp/debug-output.png');
 });
 
-const response = await fetch(imageUrl);
-if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-const buffer = Buffer.from(await response.arrayBuffer());
 
-const { data, info } = await sharp(buffer)
+
+const { data, info } = await sharp(pngBuffer)
   .ensureAlpha()           // Adds alpha channel if missing
   .png()                   // Forces full decoding
   .raw()
