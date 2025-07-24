@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 function getJmaImageUrl() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 2000); // JST
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 - 1000); // JST
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const DD = String(now.getDate()).padStart(2, '0');
