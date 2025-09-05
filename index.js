@@ -5,6 +5,8 @@ import fs from 'fs';
 import { parse } from 'csv-parse/sync';
 
 const app = express();
+const cors = require('cors');
+app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 function getJmaImageUrl() {
