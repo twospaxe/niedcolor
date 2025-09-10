@@ -31,12 +31,19 @@ function getJmaImageUrl() {
   return `http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${YYYY}${MM}${DD}/${YYYY}${MM}${DD}${hh}${mm}${ss}.jma_s.gif`;
 }
 
+function toJstString(date) {
+  if (!date) return null;
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().replace('T', ' ').replace('Z', ' JST');
+}
+
 // ------------------------------
 // Cache storage
 // ------------------------------
 let latestStations = [];    // JSON result
 let latestImage = null;     // PNG buffer
 let lastUpdate = null;
+let lastImageUrl = null;    // store last fetched image URL
 
 // ------------------------------
 // Background updater
@@ -44,6 +51,9 @@ let lastUpdate = null;
 async function updateCache() {
   try {
     const imageUrl = getJmaImageUrl();
+    lastImageUrl = imageUrl;
+    console.log(`🔄 Fetching: ${imageUrl}`);
+
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error(`Failed to fetch JMA image: ${response.statusText}`);
     const gifBuffer = Buffer.from(await response.arrayBuffer());
@@ -90,7 +100,7 @@ async function updateCache() {
     latestImage = pngBuffer;
     lastUpdate = new Date();
 
-    console.log(`✅ Cache updated at ${lastUpdate.toISOString()}`);
+    console.log(`✅ Cache updated at ${toJstString(lastUpdate)}`);
   } catch (err) {
     console.error('❌ Error updating cache:', err.message);
   }
@@ -115,6 +125,16 @@ app.get('/marked-stations', (req, res) => {
     return res.status(503).send('Cache not ready yet');
   }
   res.type('png').send(latestImage);
+});
+
+// Debug endpoint: show current status
+app.get('/status', (req, res) => {
+  res.json({
+    lastUpdateUtc: lastUpdate ? lastUpdate.toISOString() : null,
+    lastUpdateJst: toJstString(lastUpdate),
+    lastImageUrl,
+    stationsCached: latestStations.length
+  });
 });
 
 // ------------------------------
