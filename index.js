@@ -51,24 +51,23 @@ function toJstString(date) {
 // ------------------------------
 // Cache storage
 // ------------------------------
-let latestStations = [];    // JSON result (from jma_s)
+let latestStations = [];    // From jma_s
+let latestAcStations = [];  // From acmap_s
 let latestImage = null;     // jma_s PNG
+let latestAcMap = null;     // acmap_s PNG
 let lastUpdate = null;
-let lastImageUrl = null;
-
-// AC map cache
-let latestAcMap = null;
 let lastAcUpdate = null;
+let lastImageUrl = null;
 let lastAcImageUrl = null;
 
 // ------------------------------
-// Background updater (JMA_S)
+// JMA_S Updater (intensity map)
 // ------------------------------
 async function updateCache() {
   try {
     const imageUrl = getJmaImageUrl();
     lastImageUrl = imageUrl;
-    console.log(`🔄 Fetching: ${imageUrl}`);
+    console.log(`🔄 Fetching jma_s: ${imageUrl}`);
 
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error(`Failed to fetch JMA image: ${response.statusText}`);
@@ -87,12 +86,7 @@ async function updateCache() {
       const x = Math.round(parseFloat(row['L']) + parseFloat(row['N'] || 0));
       const y = Math.round(parseFloat(row['M']) + parseFloat(row['O'] || 0));
 
-      if (
-        isNaN(lat) || isNaN(lon) ||
-        isNaN(x) || isNaN(y) ||
-        x < 0 || x >= width ||
-        y < 0 || y >= height
-      ) {
+      if (isNaN(lat) || isNaN(lon) || isNaN(x) || isNaN(y) || x < 0 || y < 0 || x >= width || y >= height) {
         return null;
       }
 
@@ -111,44 +105,75 @@ async function updateCache() {
       };
     }).filter(Boolean);
 
-    // Store in cache
+    // Store
     latestStations = result;
     latestImage = pngBuffer;
     lastUpdate = new Date();
 
-    console.log(`✅ Cache updated at ${toJstString(lastUpdate)}`);
+    console.log(`✅ jma_s cache updated at ${toJstString(lastUpdate)}`);
   } catch (err) {
-    console.error('❌ Error updating cache:', err.message);
+    console.error('❌ Error updating jma_s:', err.message);
   }
 }
 
 // ------------------------------
-// Background updater (AC_MAP)
+// AC_MAP Updater (acceleration map)
 // ------------------------------
 async function updateAcMap() {
   try {
     const imageUrl = getAcMapUrl();
     lastAcImageUrl = imageUrl;
-    console.log(`🔄 Fetching AC map: ${imageUrl}`);
+    console.log(`🔄 Fetching acmap_s: ${imageUrl}`);
 
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error(`Failed to fetch AC map: ${response.statusText}`);
     const gifBuffer = Buffer.from(await response.arrayBuffer());
 
-    // Convert GIF → PNG
+    // Convert to PNG & raw data
     const pngBuffer = await sharp(gifBuffer).removeAlpha().png().toBuffer();
+    const { data, info } = await sharp(pngBuffer).raw().toBuffer({ resolveWithObject: true });
+    const { width, height } = info;
 
+    // Extract colors at station coordinates
+    const result = stationRecords.map(row => {
+      const name = row['F'];
+      const lon = parseFloat(row['J']);
+      const lat = parseFloat(row['K']);
+      const x = Math.round(parseFloat(row['L']) + parseFloat(row['N'] || 0));
+      const y = Math.round(parseFloat(row['M']) + parseFloat(row['O'] || 0));
+
+      if (isNaN(lat) || isNaN(lon) || isNaN(x) || isNaN(y) || x < 0 || y < 0 || x >= width || y >= height) {
+        return null;
+      }
+
+      const idx = (y * width + x) * 3;
+      return {
+        name,
+        lat,
+        lon,
+        x,
+        y,
+        color: {
+          r: data[idx],
+          g: data[idx + 1],
+          b: data[idx + 2]
+        }
+      };
+    }).filter(Boolean);
+
+    // Store
+    latestAcStations = result;
     latestAcMap = pngBuffer;
     lastAcUpdate = new Date();
 
-    console.log(`✅ AC map updated at ${toJstString(lastAcUpdate)}`);
+    console.log(`✅ acmap_s cache updated at ${toJstString(lastAcUpdate)}`);
   } catch (err) {
-    console.error('❌ Error updating AC map:', err.message);
+    console.error('❌ Error updating acmap_s:', err.message);
   }
 }
 
 // ------------------------------
-// Run both updaters
+// Run both updaters every second
 // ------------------------------
 updateCache();
 updateAcMap();
@@ -160,26 +185,33 @@ setInterval(updateAcMap, 1000);
 // ------------------------------
 app.get('/stations-color', (req, res) => {
   if (!latestStations.length) {
-    return res.status(503).json({ error: 'Cache not ready yet' });
+    return res.status(503).json({ error: 'jma_s cache not ready yet' });
   }
   res.json(latestStations);
 });
 
+app.get('/acmap-color', (req, res) => {
+  if (!latestAcStations.length) {
+    return res.status(503).json({ error: 'acmap_s cache not ready yet' });
+  }
+  res.json(latestAcStations);
+});
+
 app.get('/marked-stations', (req, res) => {
   if (!latestImage) {
-    return res.status(503).send('Cache not ready yet');
+    return res.status(503).send('jma_s image not ready yet');
   }
   res.type('png').send(latestImage);
 });
 
 app.get('/ac_map', (req, res) => {
   if (!latestAcMap) {
-    return res.status(503).send('AC map not ready yet');
+    return res.status(503).send('acmap_s image not ready yet');
   }
   res.type('png').send(latestAcMap);
 });
 
-// Debug endpoint: show current status
+// Debug endpoint
 app.get('/status', (req, res) => {
   res.json({
     jma_s: {
@@ -191,7 +223,8 @@ app.get('/status', (req, res) => {
     acmap_s: {
       lastUpdateUtc: lastAcUpdate ? lastAcUpdate.toISOString() : null,
       lastUpdateJst: toJstString(lastAcUpdate),
-      lastImageUrl: lastAcImageUrl
+      lastImageUrl: lastAcImageUrl,
+      stationsCached: latestAcStations.length
     }
   });
 });
