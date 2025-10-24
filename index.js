@@ -216,3 +216,28 @@ app.get('/status', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+
+app.use(express.json()); // Ensure JSON parsing for this route
+
+app.post("/discord-webhook", async (req, res) => {
+    const { username, content } = req.body;
+
+    const webhookURL = "https://discord.com/api/webhooks/1359741978220167168/SjrUIy67TFf2RgJ5Y5ubf7qDy614WpgoVPCeOuPBVTl12wjU6IbHxaIVeweWqVQOjC4p";
+
+    if (!username || !content) {
+        return res.status(400).json({ error: "Missing username or content" });
+    }
+
+    try {
+        await fetch(webhookURL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, content })
+        });
+        res.status(204).end(); // Success, no content
+    } catch (err) {
+        console.error("Error forwarding to Discord:", err);
+        res.status(500).json({ error: "Failed to send to Discord" });
+    }
+});
