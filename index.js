@@ -84,6 +84,7 @@ async function extractStationColors(buffer) {
   const { width, height } = info;
 
   return stationRecords.map(row => {
+    const code = row['A'];
     const name = row['F'];
     const lon = parseFloat(row['J']);
     const lat = parseFloat(row['K']);
@@ -99,6 +100,7 @@ async function extractStationColors(buffer) {
 
     const idx = (y * width + x) * 3;
     return {
+      code,
       name,
       lat,
       lon,
