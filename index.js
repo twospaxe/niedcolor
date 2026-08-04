@@ -124,6 +124,13 @@ async function extractStationColors(buffer) {
     ) return null;
 
     const idx = (y * width + x) * 3;
+    const r = data[idx];
+const g = data[idx + 1];
+const b = data[idx + 2];
+
+if (r === 0 && g === 0 && b === 0) {
+    return null;
+}
    return [
     code,
     data[idx],
