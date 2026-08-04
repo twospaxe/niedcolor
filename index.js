@@ -16,7 +16,30 @@ const stationRecords = parse(fs.readFileSync('./stationeng.csv', 'utf-8'), {
   skip_empty_lines: true,
   columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P']
 });
+const stationDatabase = stationRecords
+    .map(row => {
+        const lon = parseFloat(row['J']);
+        const lat = parseFloat(row['K']);
+        const x = Math.round(parseFloat(row['L']) + parseFloat(row['N'] || 0));
+        const y = Math.round(parseFloat(row['M']) + parseFloat(row['O'] || 0));
 
+        if (
+            isNaN(lat) ||
+            isNaN(lon) ||
+            isNaN(x) ||
+            isNaN(y)
+        ) return null;
+
+        return {
+            code: row['A'],
+            name: row['F'],
+            lat,
+            lon,
+            x,
+            y
+        };
+    })
+    .filter(Boolean);
 // ------------------------------
 // Helpers
 // ------------------------------
@@ -66,10 +89,12 @@ async function fetchWithFallback(primaryUrl, fallbackUrl) {
 // Cache storage
 // ------------------------------
 let latestStations = [];
+let changedStations = [];
+let previousColors = new Map();
 let latestImage = null;
 let lastUpdate = null;
 let lastImageUrl = null;
-
+let updateVersion = 0;
 let latestAcStations = [];
 let latestAcImage = null;
 let lastAcUpdate = null;
@@ -99,19 +124,12 @@ async function extractStationColors(buffer) {
     ) return null;
 
     const idx = (y * width + x) * 3;
-    return {
-      code,
-      name,
-      lat,
-      lon,
-      x,
-      y,
-      color: {
-        r: data[idx],
-        g: data[idx + 1],
-        b: data[idx + 2]
-      }
-    };
+   return [
+    code,
+    data[idx],
+    data[idx + 1],
+    data[idx + 2]
+];
   }).filter(Boolean);
 }
 
@@ -130,12 +148,40 @@ async function updateJmaCache() {
 
     latestImage = await sharp(gifBuffer).removeAlpha().png().toBuffer();
     latestStations = await extractStationColors(gifBuffer);
-    lastUpdate = new Date();
+    changedStations = [];
 
+
+
+for (const station of latestStations) {
+
+    const code = station[0];
+    const r = station[1];
+    const g = station[2];
+    const b = station[3];
+
+    const old = previousColors.get(code);
+
+    if (
+        !old ||
+        old.r !== r ||
+        old.g !== g ||
+        old.b !== b
+    ) {
+
+        previousColors.set(code, { r, g, b });
+
+        changedStations.push(station);
+    }
+}
+    lastUpdate = new Date();
+  if (changedStations.length > 0) {
+    updateVersion++;
+}
     console.log(`✅ jma_s cache updated at ${toJstString(lastUpdate)}`);
   } catch (err) {
     console.error('❌ Error updating jma_s:', err.message);
   }
+
 }
 
 async function updateAcMapCache() {
@@ -170,10 +216,14 @@ setInterval(updateAcMapCache, 1000);
 // Routes
 // ------------------------------
 app.get('/stations-color', (req, res) => {
-  if (!latestStations.length) {
-    return res.status(503).json({ error: 'Cache not ready yet' });
-  }
-  res.json(latestStations);
+ if (!lastUpdate) {
+    return res.status(503).json({ error: "Cache not ready yet" });
+}
+ 
+res.json({
+    version: updateVersion,
+    stations: changedStations
+});
 });
 
 app.get('/acmap-color', (req, res) => {
@@ -182,7 +232,38 @@ app.get('/acmap-color', (req, res) => {
   }
   res.json(latestAcStations);
 });
+app.get("/stations", (req, res) => {
 
+    if (!latestStations.length) {
+        return res.status(503).json({ error: "Cache not ready yet" });
+    }
+
+    // Create a fast lookup: code -> [code, r, g, b]
+    const colorMap = new Map(
+        latestStations.map(s => [s[0], s])
+    );
+
+    const stations = stationDatabase.map(station => {
+
+        const color = colorMap.get(station.code);
+
+        return [
+            station.code,
+            station.name,
+            station.lat,
+            station.lon,
+            station.x,
+            station.y,
+            color ? color[1] : 0,
+            color ? color[2] : 0,
+            color ? color[3] : 0
+        ];
+
+    });
+
+    res.json(stations);
+
+});
 app.get('/marked-stations', (req, res) => {
   if (!latestImage) {
     return res.status(503).send('Cache not ready yet');
