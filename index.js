@@ -20,8 +20,8 @@ const stationDatabase = stationRecords
     .map(row => {
         const lon = parseFloat(row['J']);
         const lat = parseFloat(row['K']);
-        const x = Math.round(parseFloat(row['L']));
-        const y = Math.round(parseFloat(row['M']));
+        const x = Math.round(parseFloat(row['L']) + parseFloat(row['N'] || 0));
+        const y = Math.round(parseFloat(row['M']) + parseFloat(row['O'] || 0));
 
         if (
             isNaN(lat) ||
@@ -113,8 +113,8 @@ async function extractStationColors(buffer) {
     const name = row['F'];
     const lon = parseFloat(row['J']);
     const lat = parseFloat(row['K']);
-    const x = Math.round(parseFloat(row['L']));
-    const y = Math.round(parseFloat(row['M']));
+    const x = Math.round(parseFloat(row['L']) + parseFloat(row['N'] || 0));
+    const y = Math.round(parseFloat(row['M']) + parseFloat(row['O'] || 0));
 
     if (
       isNaN(lat) || isNaN(lon) ||
@@ -309,5 +309,3 @@ app.listen(PORT, () => {
 
 
 app.use(express.json()); // Ensure JSON parsing for this route
-
-
